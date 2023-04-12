@@ -1,6 +1,6 @@
 import logging
-from typing import Dict, List, Tuple
 from collections import defaultdict
+from typing import Dict, List, Tuple
 
 from atlasq.queryset.index import AtlasIndex
 from mongoengine import Q
