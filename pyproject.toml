@@ -11,7 +11,8 @@ license = {file = "LICENSE.txt"}
 
 
 maintainers = [
-  {name = "Simone Berni", email = "s.berni@certego.net"}
+  {name = "Simone Berni", email = "s.berni@certego.net"},
+  {name = "Patrick Huck", email = "phuck@lbl.gov"}
 ]
 keywords=["certego","atlas","mongoengine","python","search","textsearch","atlassearch"]
 
