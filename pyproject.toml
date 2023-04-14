@@ -3,7 +3,7 @@ requires = ["setuptools>=56.0", "setuptools_scm[toml]>=6.2"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "atlasq"
+name = "atlasq-tschaume"
 description="Query proxy that allows the usage of AtlasSearch with mongoengine specific syntax"
 
 readme = "README.md"
@@ -33,11 +33,11 @@ classifiers = [
 dynamic = ["version", "dependencies"]
 
 [project.urls]
-homepage = "https://github.com/certego/atlasq"
-repository = "https://github.com/certego/atlasq"
-documentation = "https://github.com/certego/atlasq/README.md"
-source = "https://github.com/certego/atlasq"
-tracker = "https://github.com/certego/atlasq/issues"
+homepage = "https://github.com/tschaume/atlasq"
+repository = "https://github.com/tschaume/atlasq"
+documentation = "https://github.com/tschaume/atlasq/README.md"
+source = "https://github.com/tschaume/atlasq"
+tracker = "https://github.com/tschaume/atlasq/issues"
 
 [tool.setuptools]
 py-modules = ["atlasq"]
