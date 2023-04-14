@@ -31,7 +31,6 @@ class AtlasQuerySet(QuerySet):
             "index",
             "_aggrs_query",
             "_search_result",
-            "_count",
             "_return_objects",
             "_other_aggregations",
         )
@@ -48,9 +47,9 @@ class AtlasQuerySet(QuerySet):
 
         self._aggrs_query: List[Dict[str, Any]] = None
         self._search_result: CommandCursor = None
-        self._count: bool = False
         self._return_objects: bool = True
         self._other_aggregations: List[Dict] = []
+        self._scores: Dict = {}
 
     # pylint: disable=too-many-arguments
     def upload_index(
@@ -99,8 +98,7 @@ class AtlasQuerySet(QuerySet):
         if self._aggrs_query is None:
             self._aggrs_query = self._query_obj.to_query(self._document)
             if self._aggrs_query:
-                if self._count:
-                    self._aggrs_query[0]["$search"]["count"] = {"type": "total"}
+                self._aggrs_query[0]["$search"]["count"] = {"type": "total"}
             self._aggrs_query += self._get_projections()
             self._aggrs_query += self._other_aggregations
         return self._aggrs_query
@@ -148,7 +146,8 @@ class AtlasQuerySet(QuerySet):
                 continue
             if obj:
                 ids.append(obj["_id"])
-        self._query_obj = Q(id__in=ids)
+                self._scores[obj["_id"]] = obj["score"]
+        self._query_obj = Q(pk__in=ids)  # sorted by natural order (ObjectIDs)
         logger.debug(self._query_obj.to_query(self._document))
         return super()._query
 
@@ -179,26 +178,27 @@ class AtlasQuerySet(QuerySet):
         return qs
 
     def _get_projections(self) -> List[Dict[str, Any]]:
-        if self._count:
-            if self._query_obj:
-                return [{"$project": {"meta": "$$SEARCH_META"}}]
-            return [{"$count": "count"}]
         loaded_fields = self._loaded_fields.as_dict()
         logger.debug(loaded_fields)
+        projections = {}
         if loaded_fields:
-            return [{"$project": loaded_fields}]
-        return []
+            projections.update(loaded_fields)
+        if self._query_obj:
+            projections.update({"meta": "$$SEARCH_META", "score": {"$meta": "searchScore"}})
+
+        return [{"$project": projections}] if projections else []
 
     def count(self, with_limit_and_skip=False):  # pylint: disable=unused-argument
-        self._count = True  # pylint: disable=protected-access
-        cursor = self.__collection_aggregate(self._aggrs)  # pylint: disable=protected-access
+        need_count_stage = "$match" in self._aggrs[1]
+        aggrs = self._aggrs + [{"$count": "count"}] if need_count_stage else self._aggrs
+        cursor = self.__collection_aggregate(aggrs)  # pylint: disable=protected-access
         try:
             count = next(cursor)
         except StopIteration:
             self._len = 0  # pylint: disable=attribute-defined-outside-init
         else:
             logger.debug(count)
-            if self._query_obj:
+            if self._query_obj and not need_count_stage:
                 self._len = count["meta"]["count"]["total"]  # pylint: disable=attribute-defined-outside-init
             else:
                 self._len = count["count"]  # pylint: disable=attribute-defined-outside-init
@@ -209,4 +209,10 @@ class AtlasQuerySet(QuerySet):
         qs = self.clone()
         qs._limit = n  # pylint: disable=protected-access
         qs._other_aggregations.append({"$limit": n})  # pylint: disable=protected-access
+        return qs
+
+    def skip(self, n):
+        qs = self.clone()
+        qs._skip = n  # pylint: disable=protected-access
+        qs._other_aggregations.append({"$skip": n})  # pylint: disable=protected-access
         return qs

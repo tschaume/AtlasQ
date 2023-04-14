@@ -32,7 +32,7 @@ class TestAtlasQ(TestBaseCase):
         self.assertEqual(1, len(res))
         filters, *aggregations = res
         self.assertIsInstance(filters, dict)
-        self.assertIn("compound", filters["$search"])
+        self.assertIn("text", filters["$search"])
         self.assertIsInstance(aggregations, list)
         self.assertEqual(0, len(aggregations))
 
