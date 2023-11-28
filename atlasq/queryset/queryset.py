@@ -3,13 +3,11 @@ import logging
 import time
 from typing import Any, Dict, List, Tuple
 
-from atlasq.queryset.exceptions import AtlasIndexError
+from atlasq.queryset.exceptions import AtlasIndexError, AtlasQueryError
 from atlasq.queryset.index import AtlasIndex
 from atlasq.queryset.node import AtlasQ
 from mongoengine import Q, QuerySet
 from pymongo.command_cursor import CommandCursor
-
-logger = logging.getLogger(__name__)
 
 
 def clock(func):
@@ -18,7 +16,7 @@ def clock(func):
         result = func(self, *args, **kwargs)
         elapsed = time.perf_counter() - start_time
         floor = f"{elapsed:0.3f}"
-        logger.info(f"{floor} - {result}")
+        self.logger.info(f"{floor} - {result}")
         return result
 
     return clocked
@@ -50,6 +48,7 @@ class AtlasQuerySet(QuerySet):
         self._return_objects: bool = True
         self._other_aggregations: List[Dict] = []
         self._scores: Dict = {}
+        self.logger = logging.getLogger(f"{__name__}.{self._document._get_collection_name()}")
 
     # pylint: disable=too-many-arguments
     def upload_index(
@@ -68,7 +67,7 @@ class AtlasQuerySet(QuerySet):
             json_index["database"] = db_name
         if "name" not in json_index:
             json_index["name"] = self.index._index  # pylint: disable=protected-access
-        logger.info(f"Sending {json_index} to create new index")
+        self.logger.info(f"Sending {json_index} to create new index")
         return self.index.upload_index(json_index, user, password, group_id, cluster_name)
 
     def ensure_index(self, user: str, password: str, group_id: str, cluster_name: str):
@@ -98,7 +97,13 @@ class AtlasQuerySet(QuerySet):
         if self._aggrs_query is None:
             self._aggrs_query = self._query_obj.to_query(self._document)
             if self._aggrs_query:
-                self._aggrs_query[0]["$search"]["count"] = {"type": "total"}
+                if self._count:
+                    self._aggrs_query[0]["$search"]["count"] = {"type": "total"}
+                if self._ordering:
+                    self._aggrs_query[0]["$search"]["sort"] = dict(self._ordering)
+            else:
+                if self._ordering:
+                    raise AtlasQueryError("Atlas search does not support ordering without filtering.")
             self._aggrs_query += self._get_projections()
             self._aggrs_query += self._other_aggregations
         return self._aggrs_query
@@ -117,8 +122,7 @@ class AtlasQuerySet(QuerySet):
             return self
         qs: AtlasQuerySet = self.clone()
         order_by: List[Tuple[str, int]] = qs._get_order_by(keys)  # pylint: disable=protected-access
-        aggregation = {"$sort": dict(order_by)}
-        qs._other_aggregations.append(aggregation)  # pylint: disable=protected-access
+        qs._ordering = order_by  # pylint: disable=protected-access
         return qs
 
     def __getitem__(self, key):
@@ -148,14 +152,14 @@ class AtlasQuerySet(QuerySet):
                 ids.append(obj["_id"])
                 self._scores[obj["_id"]] = obj["score"]
         self._query_obj = Q(pk__in=ids)  # sorted by natural order (ObjectIDs)
-        logger.debug(self._query_obj.to_query(self._document))
+        self.logger.debug(self._query_obj.to_query(self._document))
         return super()._query
 
     def __collection_aggregate(self, final_pipeline, **kwargs):
         collection = self._collection
         if self._read_preference is not None or self._read_concern is not None:
             collection = self._collection.with_options(read_preference=self._read_preference, read_concern=self._read_concern)
-        logger.info(final_pipeline)
+        self.logger.info(final_pipeline)
         return collection.aggregate(final_pipeline, cursor={}, **kwargs)
 
     def aggregate(self, pipeline, **kwargs):  # pylint: disable=arguments-differ,unused-argument
@@ -173,14 +177,14 @@ class AtlasQuerySet(QuerySet):
         q = AtlasQ(**query)
         if q_obj is not None:
             q &= q_obj
-        logger.debug(q)
+        self.logger.debug(q)
         qs = super().__call__(q)
         return qs
 
     def _get_projections(self) -> List[Dict[str, Any]]:
         loaded_fields = self._loaded_fields.as_dict()
-        logger.debug(loaded_fields)
         projections = {}
+        self.logger.debug(loaded_fields)
         if loaded_fields:
             projections.update(loaded_fields)
         if self._query_obj:
@@ -189,6 +193,7 @@ class AtlasQuerySet(QuerySet):
         return [{"$project": projections}] if projections else []
 
     def count(self, with_limit_and_skip=False):  # pylint: disable=unused-argument
+        # self._count = True
         need_count_stage = "$match" in self._aggrs[1]
         aggrs = self._aggrs + [{"$count": "count"}] if need_count_stage else self._aggrs
         cursor = self.__collection_aggregate(aggrs)  # pylint: disable=protected-access
@@ -197,12 +202,12 @@ class AtlasQuerySet(QuerySet):
         except StopIteration:
             self._len = 0  # pylint: disable=attribute-defined-outside-init
         else:
-            logger.debug(count)
+            self.logger.debug(count)
             if self._query_obj and not need_count_stage:
                 self._len = count["meta"]["count"]["total"]  # pylint: disable=attribute-defined-outside-init
             else:
                 self._len = count["count"]  # pylint: disable=attribute-defined-outside-init
-        logger.debug(self._len)
+        self.logger.debug(self._len)
         return self._len
 
     def limit(self, n):

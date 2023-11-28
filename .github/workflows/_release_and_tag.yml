@@ -61,6 +61,12 @@ jobs:
           target_commitish: ${{ github.base_ref }}
           token: ${{ secrets.PAT }}
 
+      - name: Checkout created tag
+        uses: actions/checkout@v3
+        if: inputs.publish_on_test_pypi || inputs.publish_on_pypi
+        with:
+          fetch-depth: 0 # otherwise, you do not retrieve the tags
+
       - uses: actions/setup-python@v1
         if: inputs.publish_on_pypi || inputs.publish_on_test_pypi
         with:
