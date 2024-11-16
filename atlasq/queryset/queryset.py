@@ -60,7 +60,9 @@ class AtlasQuerySet(QuerySet):
         cluster_name: str,
     ):
         db_name = self._document._get_db().name  # pylint: disable=protected-access
-        collection_name = self._document._get_collection_name()  # pylint: disable=protected-access
+        collection_name = (
+            self._document._get_collection_name()
+        )  # pylint: disable=protected-access
         if "collectionName" not in json_index:
             json_index["collectionName"] = collection_name
         if "database" not in json_index:
@@ -68,12 +70,18 @@ class AtlasQuerySet(QuerySet):
         if "name" not in json_index:
             json_index["name"] = self.index._index  # pylint: disable=protected-access
         self.logger.info(f"Sending {json_index} to create new index")
-        return self.index.upload_index(json_index, user, password, group_id, cluster_name)
+        return self.index.upload_index(
+            json_index, user, password, group_id, cluster_name
+        )
 
     def ensure_index(self, user: str, password: str, group_id: str, cluster_name: str):
         db_name = self._document._get_db().name  # pylint: disable=protected-access
-        collection_name = self._document._get_collection_name()  # pylint: disable=protected-access
-        return self.index.ensure_index_exists(user, password, group_id, cluster_name, db_name, collection_name)
+        collection_name = (
+            self._document._get_collection_name()
+        )  # pylint: disable=protected-access
+        return self.index.ensure_index_exists(
+            user, password, group_id, cluster_name, db_name, collection_name
+        )
 
     def __iter__(self):
         if not self._return_objects:
@@ -103,7 +111,9 @@ class AtlasQuerySet(QuerySet):
                     self._aggrs_query[0]["$search"]["sort"] = dict(self._ordering)
             else:
                 if self._ordering:
-                    raise AtlasQueryError("Atlas search does not support ordering without filtering.")
+                    raise AtlasQueryError(
+                        "Atlas search does not support ordering without filtering."
+                    )
             self._aggrs_query += self._get_projections()
             self._aggrs_query += self._other_aggregations
         return self._aggrs_query
@@ -121,7 +131,7 @@ class AtlasQuerySet(QuerySet):
         if not keys:
             return self
         qs: AtlasQuerySet = self.clone()
-        order_by: List[Tuple[str, int]] = qs._get_order_by(keys)  # pylint: disable=protected-access
+        order_by: List[Tuple[str, int]] = qs._get_order_by(keys)
         qs._ordering = order_by  # pylint: disable=protected-access
         return qs
 
