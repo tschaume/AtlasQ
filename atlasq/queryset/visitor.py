@@ -71,7 +71,9 @@ class AtlasQueryCompilerVisitor(QueryCompilerVisitor):
                 filters.pop("index")
                 children_results.append(filters)
             aggregations.extend(child_aggregations)
-        return {"compound": {"should": children_results, "minimumShouldMatch": 1}}, aggregations
+        return {
+            "compound": {"should": children_results, "minimumShouldMatch": 1}
+        }, aggregations
 
     def visit_combination(self, combination) -> List[Dict]:
         if combination.operation == combination.AND:
@@ -85,19 +87,28 @@ class AtlasQueryCompilerVisitor(QueryCompilerVisitor):
     def visit_query(self, query) -> List[Dict]:
         from atlasq.queryset.transform import AtlasTransform
 
-        affirmative, negative, aggregations = AtlasTransform(query.query, self.atlas_index).transform()
+        affirmative, negative, aggregations = AtlasTransform(
+            query.query, self.atlas_index
+        ).transform()
         filters = defaultdict(dict)
         if affirmative:
             filters["compound"]["filter"] = affirmative
         if negative:
             filters["compound"]["mustNot"] = negative
 
-        if len(filters["compound"]) == 1 and "filter" in filters["compound"] and len(affirmative) == 1:
+        if (
+            len(filters["compound"]) == 1
+            and "filter" in filters["compound"]
+            and len(affirmative) == 1
+        ):
             filters = affirmative[0]
 
         result = []
         if filters:
             filters["index"] = self.atlas_index.index
+            filters["returnStoredSource"] = True
+            filters["sort"] = {"score": {"$meta": "searchScore"}}
+            filters["count"] = {"type": "total"}
             result += [{"$search": filters}]
         result += aggregations
         return result

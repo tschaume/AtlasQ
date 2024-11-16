@@ -10,9 +10,13 @@ from requests.auth import HTTPDigestAuth
 logger = getLogger(__name__)
 
 ATLAS_BASE_URL = "https://cloud.mongodb.com/api/atlas/v1.0"
-TEXT_INDEXES_ENDPOINT = ATLAS_BASE_URL + "/groups/{GROUP_ID}/clusters/{CLUSTER_NAME}/fts/indexes"
+TEXT_INDEXES_ENDPOINT = (
+    ATLAS_BASE_URL + "/groups/{GROUP_ID}/clusters/{CLUSTER_NAME}/fts/indexes"
+)
 
-LIST_TEXT_INDEXES_ENDPOINT = TEXT_INDEXES_ENDPOINT + "/{DATABASE_NAME}/{COLLECTION_NAME}"
+LIST_TEXT_INDEXES_ENDPOINT = (
+    TEXT_INDEXES_ENDPOINT + "/{DATABASE_NAME}/{COLLECTION_NAME}"
+)
 
 
 class AtlasIndexType(Enum):
@@ -78,7 +82,9 @@ class AtlasIndex:
 
         if any(id_keyword in data["mappings"]["fields"] for id_keyword in ["id", "pk"]):
             if "_id" not in data["mappings"]["fields"]:
-                data["mappings"]["fields"]["_id"] = {"type": AtlasIndexType.OBJECT_ID.value}
+                data["mappings"]["fields"]["_id"] = {
+                    "type": AtlasIndexType.OBJECT_ID.value
+                }
 
         url = TEXT_INDEXES_ENDPOINT.format(
             GROUP_ID=group_id,
@@ -123,7 +129,9 @@ class AtlasIndex:
             self.ensured = False
         return self.ensured
 
-    def _set_indexed_fields(self, index_result: Union[Dict, List], base_field: str = ""):
+    def _set_indexed_fields(
+        self, index_result: Union[Dict, List], base_field: str = ""
+    ):
         if isinstance(index_result, list):
             for obj in index_result:
                 self._set_indexed_fields(obj, base_field=base_field)

@@ -72,7 +72,15 @@ class AtlasTransform:
     equals_type_supported = (bool, ObjectId, int, datetime.datetime)
     startswith_keywords = ["startswith", "istartswith"]
     endswith_keywords = ["endswith", "iendswith"]
-    text_keywords = ["iwholeword", "wholeword", "exact", "iexact", "eq", "contains", "icontains"]
+    text_keywords = [
+        "iwholeword",
+        "wholeword",
+        "exact",
+        "iexact",
+        "eq",
+        "contains",
+        "icontains",
+    ]
     all_keywords = ["all"]
     regex_keywords = ["regex", "iregex"]
     size_keywords = ["size"]
@@ -101,7 +109,7 @@ class AtlasTransform:
         return {"compound": {"must": filters}}
 
     def _regex(self, path: str, value: str):
-        return {"regex": {"query": value, "path": path}}
+        return {"regex": {"query": value, "path": path, "allowAnalyzedField": True}}
 
     def _embedded_document(self, path: str, content: Dict, positive: bool):
         operator = "must" if positive else "mustNot"
@@ -112,43 +120,60 @@ class AtlasTransform:
             }
         }
 
-    def _convert_to_embedded_document(self, path: List[str], operator: Dict, positive: bool, start: str = ""):
+    def _convert_to_embedded_document(
+        self, path: List[str], operator: Dict, positive: bool, start: str = ""
+    ):
         element = path.pop(0)
         partial_path = f"{start}.{element}" if start else element
         if not self.atlas_index.ensured:
             return operator
-        if self.atlas_index.get_type_from_keyword(partial_path) != AtlasIndexType.EMBEDDED_DOCUMENT.value:
+        if (
+            self.atlas_index.get_type_from_keyword(partial_path)
+            != AtlasIndexType.EMBEDDED_DOCUMENT.value
+        ):
             return operator
 
         if not path:
             return operator
 
-        new_operator = self._convert_to_embedded_document(path, operator, start=partial_path, positive=positive)
+        new_operator = self._convert_to_embedded_document(
+            path, operator, start=partial_path, positive=positive
+        )
         return self._embedded_document(
             partial_path,
             new_operator,
-            True if operator != new_operator else positive,  # this cover the case of multiple embeddedDocument,
+            (
+                True if operator != new_operator else positive
+            ),  # this cover the case of multiple embeddedDocument,
             # where only the last one must be set to negative
         )
 
     def _exists(self, path: str) -> Dict:
         return {"exists": {"path": path}}
 
-    def _range(self, path: str, value: Union[int, datetime.datetime], keywords: List[str]) -> Dict:
+    def _range(
+        self, path: str, value: Union[int, datetime.datetime], keywords: List[str]
+    ) -> Dict:
         for keyword in keywords:
             if keyword not in self.range_keywords:
-                raise AtlasFieldError(f"Range search for {path} must be {self.range_keywords}, not {keyword}")
+                raise AtlasFieldError(
+                    f"Range search for {path} must be {self.range_keywords}, not {keyword}"
+                )
         if isinstance(value, datetime.datetime):
             value = value.replace(microsecond=0)
         elif isinstance(value, int):
             pass
         else:
-            raise AtlasFieldError(f"Range search for {path} must have a value of datetime or integer")
+            raise AtlasFieldError(
+                f"Range search for {path} must have a value of datetime or integer"
+            )
         return {"range": {"path": path, **{keyword: value for keyword in keywords}}}
 
     def _single_equals(self, path: str, value: Union[ObjectId, bool]):
         if not isinstance(value, self.equals_type_supported):
-            raise AtlasFieldError(f"Text search for equals on {path=} cannot be {value}, must be ObjectId or bool")
+            raise AtlasFieldError(
+                f"Text search for equals on {path=} cannot be {value}, must be ObjectId or bool"
+            )
         return {
             "equals": {
                 "path": path,
@@ -161,11 +186,15 @@ class AtlasTransform:
             return {path: {"$elemMatch": value}}
         return {path: {"$elemMatch": {f"${keyword}": value}}}
 
-    def _equals(self, path: str, value: Union[List[Union[ObjectId, bool]], ObjectId, bool]) -> Dict:
+    def _equals(
+        self, path: str, value: Union[List[Union[ObjectId, bool]], ObjectId, bool]
+    ) -> Dict:
         if isinstance(value, list):
             values = value
             if not values:
-                raise AtlasFieldError(f"Text search for equals on {path=} cannot be empty")
+                raise AtlasFieldError(
+                    f"Text search for equals on {path=} cannot be empty"
+                )
             base = {"compound": {"should": [], "minimumShouldMatch": 1}}
             for value in values:
                 base["compound"]["should"].append(self._single_equals(path, value))
@@ -216,11 +245,15 @@ class AtlasTransform:
             partial_path = f"{start}.{element}" if start else element
 
             if not self.atlas_index.ensure_keyword_is_indexed(partial_path):
-                raise AtlasIndexFieldError(f"The keyword {partial_path} is not indexed in {self.atlas_index.index}")
+                raise AtlasIndexFieldError(
+                    f"The keyword {partial_path} is not indexed in {self.atlas_index.index}"
+                )
             start = partial_path
 
     @staticmethod
-    def _cast_to_object_id(value: Union[str, ObjectId, List[Union[str, ObjectId]]]) -> Union[ObjectId, List[ObjectId]]:
+    def _cast_to_object_id(
+        value: Union[str, ObjectId, List[Union[str, ObjectId]]]
+    ) -> Union[ObjectId, List[ObjectId]]:
         if isinstance(value, str):
             value = ObjectId(value)
         elif isinstance(value, list):
@@ -240,10 +273,16 @@ class AtlasTransform:
     def _auto_convert_type_to_keyword(self, path: str, value: Any) -> Dict:
         if isinstance(value, list):
             value_to_check = value[0]
-            if not all(isinstance(x, value_to_check.__class__) or x is None for x in value):
-                raise TypeError(f"All elements of a list should have the same type: {value}")
+            if not all(
+                isinstance(x, value_to_check.__class__) or x is None for x in value
+            ):
+                raise TypeError(
+                    f"All elements of a list should have the same type: {value}"
+                )
         elif isinstance(value, dict):
-            raise TypeError(f"It is not possible to have a dictionary as a value: {value}")
+            raise TypeError(
+                f"It is not possible to have a dictionary as a value: {value}"
+            )
         else:
             value_to_check = value
         if isinstance(value_to_check, self.equals_type_supported):
@@ -262,7 +301,9 @@ class AtlasTransform:
             # if the value is negative, we add the element in the negative list
             positive = 1
             if isinstance(value, QuerySet):
-                logger.debug("Casting queryset to list, otherwise the aggregation will fail")
+                logger.debug(
+                    "Casting queryset to list, otherwise the aggregation will fail"
+                )
                 value = list(value)
             key_parts = key.split("__")
             obj = None
@@ -287,8 +328,12 @@ class AtlasTransform:
                 if keyword in self.size_keywords:
                     # it must the last keyword, otherwise we do not support it
                     if i != len(key_parts) - 1:
-                        raise NotImplementedError(f"Keyword {keyword} not implemented yet")
-                    other_aggregations.append(self._size(path, value, "eq" if positive == 1 else "ne"))
+                        raise NotImplementedError(
+                            f"Keyword {keyword} not implemented yet"
+                        )
+                    other_aggregations.append(
+                        self._size(path, value, "eq" if positive == 1 else "ne")
+                    )
                     break
                 if keyword in self.exists_keywords:
                     if value is False:
@@ -319,7 +364,9 @@ class AtlasTransform:
                     break
                 if keyword in self.type_keywords:
                     if positive == -1:
-                        raise NotImplementedError(f"At the moment you can't have a negative `{keyword}` keyword")
+                        raise NotImplementedError(
+                            f"At the moment you can't have a negative `{keyword}` keyword"
+                        )
                     other_aggregations.append(self._type(path, value))
             else:
                 if not path:
@@ -330,7 +377,9 @@ class AtlasTransform:
                 if self.atlas_index.ensured:
                     self._ensure_path_is_indexed(path.split("."))
                 # we are wrapping the result to an embedded document
-                converted = self._convert_to_embedded_document(path.split("."), obj, positive=positive == 1)
+                converted = self._convert_to_embedded_document(
+                    path.split("."), obj, positive=positive == 1
+                )
                 if obj != converted:
                     # we have an embedded object
                     # the mustNot is done inside the embedded document clause
@@ -369,7 +418,9 @@ class AtlasTransform:
             # we check for a correspondence
             if path == already_present_obj["embeddedDocument"]["path"]:
                 # we merge the objects
-                already_present_obj["embeddedDocument"]["operator"]["compound"].setdefault(operator, []).extend(content)
+                already_present_obj["embeddedDocument"]["operator"][
+                    "compound"
+                ].setdefault(operator, []).extend(content)
                 # we can exit since we are sure that it can be only 1 hit for path
                 # if this method is called at every embedded object
                 break
