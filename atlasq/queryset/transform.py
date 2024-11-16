@@ -109,7 +109,7 @@ class AtlasTransform:
         return {"compound": {"must": filters}}
 
     def _regex(self, path: str, value: str):
-        return {"regex": {"query": value, "path": path}}
+        return {"regex": {"query": value, "path": path, "allowAnalyzedField": True}}
 
     def _embedded_document(self, path: str, content: Dict, positive: bool):
         operator = "must" if positive else "mustNot"

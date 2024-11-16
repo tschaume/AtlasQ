@@ -106,6 +106,9 @@ class AtlasQueryCompilerVisitor(QueryCompilerVisitor):
         result = []
         if filters:
             filters["index"] = self.atlas_index.index
+            filters["returnStoredSource"] = True
+            filters["sort"] = {"score": {"$meta": "searchScore"}}
+            filters["count"] = {"type": "total"}
             result += [{"$search": filters}]
         result += aggregations
         return result
